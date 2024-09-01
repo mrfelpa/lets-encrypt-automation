@@ -9,47 +9,48 @@ from rich.text import Text
 from rich.progress import Progress
 
 console = Console()
-
 logging.basicConfig(filename='certbot_install.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def is_linux():
-    return platform.system() == "Linux"
+SUPPORTED_OS = ["Linux", "Windows"]
+CERTBOT_INSTALL_COMMANDS = {
+    "Linux": ["apt-get", "install", "-y", "certbot", "python3-certbot-nginx"],
+    "Windows": ["choco", "install", "certbot"]
+}
 
-def is_windows():
-    return platform.system() == "Windows"
+def is_supported_os():
+    return platform.system() in SUPPORTED_OS
+
+def check_dependencies():
+    os_name = platform.system()
+    if os_name == "Linux":
+        try:
+            subprocess.run(["apt-get", "--version"], check=True)
+        except subprocess.CalledProcessError:
+            console.print("[bold red]apt-get is not installed. Please install it before continuing.[/bold red]")
+            exit(1)
+    elif os_name == "Windows":
+        try:
+            subprocess.run(["choco", "--version"], check=True)
+        except subprocess.CalledProcessError:
+            console.print("[bold red]Chocolatey is not installed. Please install it before continuing.[/bold red]")
+            exit(1)
 
 def install_certbot():
-    if is_linux():
-        console.print("[bold green]Installing Certbot on Linux...[/bold green]")
-        try:
+    os_name = platform.system()
+    console.print(f"[bold green]Installing Certbot on {os_name}...[/bold green]")
+    
+    try:
+        if os_name == "Linux":
             subprocess.run(["apt-get", "update"], check=True)
-            subprocess.run(["apt-get", "install", "-y", "certbot", "python3-certbot-nginx"], check=True)
-            console.print("[bold green]Certbot installed successfully on Linux![/bold green]")
-            logging.info("Certbot installed successfully on Linux.")
-        except subprocess.CalledProcessError as e:
-            console.print(f"[bold red]Error installing Certbot on Linux: {e}[/bold red]")
-            logging.error(f"Error installing Certbot on Linux: {e}")
-            exit(2)  
-    elif is_windows():
-        console.print("[bold green]Installing Certbot on Windows...[/bold green]")
-        try:
-            subprocess.run(["choco", "install", "certbot"], check=True)
-            console.print("[bold green]Certbot installed successfully on Windows![/bold green]")
-            logging.info("Certbot installed successfully on Windows.")
-        except subprocess.CalledProcessError:
-            console.print("[bold yellow]Chocolatey installation failed. Attempting to install via pip...[/bold yellow]")
-            try:
-                subprocess.run(["pip", "install", "certbot"], check=True)
-                console.print("[bold green]Certbot installed successfully via pip![/bold green]")
-                logging.info("Certbot installed successfully via pip.")
-            except subprocess.CalledProcessError as e:
-                console.print(f"[bold red]Error installing Certbot via pip: {e}[/bold red]")
-                logging.error(f"Error installing Certbot via pip: {e}")
-                exit(3) 
-    else:
-        console.print("[bold red]Unsupported operating system.[/bold red]")
-        logging.error("Unsupported operating system.")
-        exit(1) 
+            subprocess.run(CERTBOT_INSTALL_COMMANDS["Linux"], check=True)
+        elif os_name == "Windows":
+            subprocess.run(CERTBOT_INSTALL_COMMANDS["Windows"], check=True)
+        console.print(f"[bold green]Certbot installed successfully on {os_name}![/bold green]")
+        logging.info(f"Certbot installed successfully on {os_name}.")
+    except subprocess.CalledProcessError as e:
+        console.print(f"[bold red]Error installing Certbot on {os_name}: {e}[/bold red]")
+        logging.error(f"Error installing Certbot on {os_name}: {e}")
+        exit(2)
 
 def validate_email(email):
     email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
@@ -72,26 +73,26 @@ def validate_input(domain, email):
     return True
 
 def obtain_certificate(domain, email, mode):
+    
     console.print(f"[bold blue]Obtaining certificate for {domain} using {mode} mode...[/bold blue]")
     with Progress() as progress:
         task = progress.add_task("[cyan]Obtaining certificate...", total=None)
         try:
-            if mode == "nginx":
-                subprocess.run(["certbot", "certonly", "--nginx", "-d", domain, "--email", email, "--agree-tos", "--non-interactive"], check=True)
-            elif mode == "standalone":
-                subprocess.run(["certbot", "certonly", "--standalone", "-d", domain, "--email", email, "--agree-tos", "--non-interactive"], check=True)
+            command = ["certbot", "certonly", f"--{mode}", "-d", domain, "--email", email, "--agree-tos", "--non-interactive"]
+            subprocess.run(command, check=True)
             progress.update(task, advance=1)
             console.print("[bold green]Certificate obtained successfully![/bold green]")
             logging.info(f"Certificate obtained successfully for {domain} using {mode} mode.")
         except subprocess.CalledProcessError as e:
             console.print(f"[bold red]Error obtaining certificate: {e}[/bold red]")
             logging.error(f"Error obtaining certificate for {domain}: {e}")
-            exit(4) 
+            exit(4)
 
 def confirm_action(action):
     return Prompt.ask(f"[bold yellow]Are you sure you want to {action}? (yes/no)[/bold yellow]").lower() == "yes"
 
 def show_help():
+  
     console.print(Text("Help - Let's Encrypt Certificate Automation", style="bold magenta"))
     console.print("""
 This script automates the installation and configuration of Let's Encrypt digital certificates on both Linux and Windows environments.
@@ -110,6 +111,13 @@ def main():
     if Prompt.ask("[bold yellow]Do you need help? (yes/no)[/bold yellow]").lower() == "yes":
         show_help()
         exit(0)
+
+    if not is_supported_os():
+        console.print("[bold red]Unsupported operating system.[/bold red]")
+        logging.error("Unsupported operating system.")
+        exit(1)
+
+    check_dependencies()
 
     if not confirm_action("proceed with the installation of Certbot"):
         console.print("[bold red]Installation aborted by user.[/bold red]")
