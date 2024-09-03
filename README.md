@@ -27,3 +27,6 @@ Standalone Mode***
 ***Logs***
 
 - The script generates detailed logs ***in certbot_install.log***, useful for troubleshooting and auditing.
+
+ ![Lets_encrypt](https://github.com/user-attachments/assets/7268f26f-8263-4a6d-ac97-8e226c221fd7)
+ 
